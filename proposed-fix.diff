@@ -1,0 +1,26 @@
+From: A Teammate <teammate@example.edu>
+Date: Wed, 4 Nov 2026 16:12:40 -0500
+Subject: [PATCH] close the double-booking window in the booking path
+
+I pointed my agent at RES-4471 and it produced the one-hunk fix below.
+It re-reads the schedule right before the write, which closes the window
+the report describes. Ran the suite, still green. Ran the stress runner
+a few times, no bad rounds. Take a look and merge if you agree.
+---
+diff --git a/src/main/java/edu/cmu/cs214/lab10/service/BookingService.java b/src/main/java/edu/cmu/cs214/lab10/service/BookingService.java
+--- a/src/main/java/edu/cmu/cs214/lab10/service/BookingService.java
++++ b/src/main/java/edu/cmu/cs214/lab10/service/BookingService.java
+@@ -71,6 +71,13 @@ public final class BookingService {
+             return reject(roomId, startMinute, endMinute, "slot already held");
+         }
+         Booking booking = new Booking(nextId(), roomId, startMinute, endMinute, BookingStatus.CONFIRMED);
++        // Defensive re-check. Another request can take the slot between the
++        // check above and the insert below, so read the store once more right
++        // before writing. With the freshest possible answer in hand there is no
++        // window left for a second booking to slip through.
++        if (store.hasOverlap(roomId, startMinute, endMinute)) {
++            return reject(roomId, startMinute, endMinute, "slot already held");
++        }
+         store.insert(booking);
+         stats.recordConfirmed();
+         BookingLog.confirmed(booking);

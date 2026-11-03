@@ -1,0 +1,80 @@
+# RACE.md
+
+One section per milestone. Fill each one in order as you go.
+
+The prediction in milestone 1 is written BEFORE you run your race test. A TA
+may ask about it. Commit it on its own so the order is visible.
+
+Keep it short and specific. Point at methods, call sites, and the invariant.
+
+---
+
+## Milestone 1: from the ticket to a test that fails every time
+
+### Suspect list
+
+Everything your review turned up that touches shared state, with a one-line
+verdict for each. Add or remove rows as needed.
+
+| # | What you found (method, field, or class) | Verdict, in one line |
+|---|---|---|
+| 1 | | |
+| 2 | | |
+| 3 | | |
+| 4 | | |
+
+**Which one explains the ticket, and how you know.** Tie it to the invariant
+the ticket names.
+
+### Predicted interleaving (write this before you run your race test)
+
+Two threads, one row per step, in the form from lecture. Describe what each
+thread does at that step and leave the other column empty. Add or remove rows
+as your prediction needs.
+
+| Step | Thread A | Thread B |
+|---|---|---|
+| t1 | | |
+| t2 | | |
+| t3 | | |
+| | **End state:** | |
+
+If the run turned out different from your prediction, add one line on what
+you missed. Leave the table as you first wrote it.
+
+### Your race test
+
+**How you aimed `PausingStore`, and the result.** Method name and call index, why
+that pair pins the schedule you predicted, and the output of two separate
+runs (assertion failure and log lines).
+
+---
+
+## Milestone 2: the patch a teammate sent
+
+**Your milestone-1 test on the patched code.** Green or red. Paste the result.
+
+**The re-aimed run.** Method name, call index, the pasted result, and one line
+on why that aim tests the patch rather than sidestepping it.
+
+**Your verdict.** Accept or reject, and what your milestone-1 result does and
+does not show about the patch.
+
+---
+
+## Milestone 3: the fix you would ship
+
+**Which option, and what you changed.** Name the lock or the atomic operation
+and the two operations it now covers. Paste the diff of your change and the
+passing run of your milestone-1 test and the full suite.
+
+**Is your milestone-1 test still testing anything?** After your fix, describe
+what that test now exercises. Did `PausingStore` pause a call during the green run? How do
+you know?
+
+**What runs one at a time now that ran in parallel before.** Name concretely which callers
+queue behind which. "Nothing, it is just correct now" does not count as an
+answer.
+
+**What you left unfixed.** For anything your review flagged that you chose not
+to fix, one line each on why.
