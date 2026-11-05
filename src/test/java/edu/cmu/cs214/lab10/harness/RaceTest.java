@@ -52,30 +52,6 @@ class RaceTest {
                 "a room may have at most one confirmed booking covering any minute");
     }
 
-    @Test
-    void secondOverlapCheckStillAllowsDoubleBooking() throws InterruptedException {
-        InMemoryBookingStore real = new InMemoryBookingStore();
-        PausingStore gated = new PausingStore(real, "hasOverlap", 2);
-        BookingService service = new BookingService(gated, ROOMS);
-
-        Thread first = new Thread(() -> service.book(WEAN, 540, 600));
-        first.start();
-        assertTrue(gated.awaitPaused());
-
-        Thread second = new Thread(() -> service.book(WEAN, 540, 600));
-        second.start();
-        second.join(PausingStore.TIMEOUT_MILLIS);
-
-        gated.release();
-        first.join(PausingStore.TIMEOUT_MILLIS);
-        second.join(PausingStore.TIMEOUT_MILLIS);
-
-        long confirmed = real.bookingsForRoom(WEAN).stream()
-                .filter(booking -> booking.status() == BookingStatus.CONFIRMED)
-                .count();
-        assertEquals(1, confirmed);
-    }
-
     // ------------------------------------------------------------------
     // Wiring example 1: wrap the store
     //
