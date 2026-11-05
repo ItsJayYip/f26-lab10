@@ -1,5 +1,16 @@
 package edu.cmu.cs214.lab10.harness;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import edu.cmu.cs214.lab10.domain.BookingStatus;
+import edu.cmu.cs214.lab10.domain.Room;
+import edu.cmu.cs214.lab10.service.BookingService;
+import edu.cmu.cs214.lab10.store.InMemoryBookingStore;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
 /**
  * Where your concurrency tests go.
  *
@@ -7,6 +18,39 @@ package edu.cmu.cs214.lab10.harness;
  * at, and what scenario to drive through it, is yours to work out.
  */
 class RaceTest {
+
+    private static final String WEAN = "WEH-5409";
+    private static final List<Room> ROOMS = List.of(
+            new Room(WEAN, "Wean 5409", 12),
+            new Room("GHC-4301", "Gates 4301", 30));
+
+    @Test
+    void concurrentRequestsCannotBothConfirmTheSameSlot() throws InterruptedException {
+        InMemoryBookingStore real = new InMemoryBookingStore();
+        PausingStore gated = new PausingStore(real, "hasOverlap", 1);
+        BookingService service = new BookingService(gated, ROOMS);
+
+        Thread first = new Thread(() -> service.book(WEAN, 540, 600), "customer-1");
+        first.start();
+        assertTrue(gated.awaitPaused(), "the first overlap check reached the gate");
+
+        Thread second = new Thread(() -> service.book(WEAN, 540, 600), "customer-2");
+        second.start();
+        second.join(PausingStore.TIMEOUT_MILLIS);
+
+        gated.release();
+        first.join(PausingStore.TIMEOUT_MILLIS);
+        second.join(PausingStore.TIMEOUT_MILLIS);
+        assertFalse(first.isAlive(), "the first request completed after release");
+        assertFalse(second.isAlive(), "the second request completed after release");
+
+        long confirmed = real.bookingsForRoom(WEAN).stream()
+                .filter(booking -> booking.status() == BookingStatus.CONFIRMED)
+                .filter(booking -> booking.overlaps(540, 600))
+                .count();
+        assertEquals(1, confirmed,
+                "a room may have at most one confirmed booking covering any minute");
+    }
 
     // ------------------------------------------------------------------
     // Wiring example 1: wrap the store

@@ -60,6 +60,32 @@ you missed. Leave the table as you first wrote it.
 that pair pins the schedule you predicted, and the output of two separate
 runs (assertion failure and log lines).
 
+I aimed `PausingStore` at `hasOverlap`, call 1. The wrapper delegates first, so
+Thread A computes `false` against the empty store and then parks before
+`BookingService.book` receives that answer. Thread B is not gated: it checks
+the still-empty store, inserts, and finishes. Releasing A then lets it act on
+its already-computed `false` and insert too. The run matched the prediction.
+
+Run 1:
+
+```text
+2026-11-05T23:18:58.786Z INFO booking.confirmed booking=bk-1 room=WEH-5409 start=540 end=600
+2026-11-05T23:18:58.794Z INFO booking.confirmed booking=bk-2 room=WEH-5409 start=540 end=600
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] RaceTest.concurrentRequestsCannotBothConfirmTheSameSlot:51 a room may have at most one confirmed booking covering any minute ==> expected: <1> but was: <2>
+[INFO] BUILD FAILURE
+```
+
+Run 2:
+
+```text
+2026-11-05T23:19:07.686Z INFO booking.confirmed booking=bk-1 room=WEH-5409 start=540 end=600
+2026-11-05T23:19:07.687Z INFO booking.confirmed booking=bk-2 room=WEH-5409 start=540 end=600
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] RaceTest.concurrentRequestsCannotBothConfirmTheSameSlot:51 a room may have at most one confirmed booking covering any minute ==> expected: <1> but was: <2>
+[INFO] BUILD FAILURE
+```
+
 ---
 
 ## Milestone 2: the patch a teammate sent
