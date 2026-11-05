@@ -18,13 +18,23 @@ verdict for each. Add or remove rows as needed.
 
 | # | What you found (method, field, or class) | Verdict, in one line |
 |---|---|---|
-| 1 | | |
-| 2 | | |
-| 3 | | |
-| 4 | | |
+| 1 | `BookingService.book`: `store.hasOverlap(...)` then `store.insert(...)` | **Cause:** the check and write are separately atomic, so another booking can interleave between them. |
+| 2 | `InMemoryBookingStore.bookings` and its public methods | Safe per method: the private list never escapes and every interface method synchronizes on the same store. |
+| 3 | `InMemoryBookingStore.cancelAndPromote` | Safe for its invariant: cancellation, full-slot conflict recheck, and FIFO promotion occur under one store lock. |
+| 4 | `BookingService.sequence` / `nextId()` | Safe: `AtomicLong.incrementAndGet()` gives concurrent requests distinct ids. |
+| 5 | `BookingService.catalog` | Safe: construction copies it, and later operations only read it. |
+| 6 | `BookingStats` counters | Racy by design, but irrelevant: approximate counters make no booking decision and cannot create store rows. |
+| 7 | `BookingLog` / standard output | Concurrent lines may be ordered unpredictably, but each completed `println` neither decides nor stores bookings. |
 
 **Which one explains the ticket, and how you know.** Tie it to the invariant
 the ticket names.
+
+`BookingService.book` explains the ticket. The named invariant is at most one
+`CONFIRMED` booking per room per minute, but `hasOverlap` and `insert` are two
+separate critical sections. Two callers can both observe no confirmed overlap
+and then both insert a confirmed booking. That produces exactly the durable
+bad state and paired confirmation log lines in the ticket; approximate stats,
+id generation, and logging cannot do that.
 
 ### Predicted interleaving (write this before you run your race test)
 
@@ -34,10 +44,12 @@ as your prediction needs.
 
 | Step | Thread A | Thread B |
 |---|---|---|
-| t1 | | |
-| t2 | | |
-| t3 | | |
-| | **End state:** | |
+| t1 | `hasOverlap(WEH-5409, 540, 600)` returns false, then pauses before `book` receives the result. | |
+| t2 | | `hasOverlap(WEH-5409, 540, 600)` returns false. |
+| t3 | | Creates `bk-1` as `CONFIRMED`, inserts it, and logs `booking.confirmed`. |
+| t4 | Resumes with its already-computed false result. | |
+| t5 | Creates `bk-2` as `CONFIRMED`, inserts it, and logs `booking.confirmed`. | |
+| | **End state:** | Two overlapping `CONFIRMED` bookings for the same room and minutes; the invariant assertion expects one and fails with actual count two. |
 
 If the run turned out different from your prediction, add one line on what
 you missed. Leave the table as you first wrote it.
