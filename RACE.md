@@ -18,23 +18,20 @@ verdict for each. Add or remove rows as needed.
 
 | # | What you found (method, field, or class) | Verdict, in one line |
 |---|---|---|
-| 1 | `BookingService.book`: `store.hasOverlap(...)` then `store.insert(...)` | **Cause:** the check and write are separately atomic, so another booking can interleave between them. |
-| 2 | `InMemoryBookingStore.bookings` and its public methods | Safe per method: the private list never escapes and every interface method synchronizes on the same store. |
-| 3 | `InMemoryBookingStore.cancelAndPromote` | Safe for its invariant: cancellation, full-slot conflict recheck, and FIFO promotion occur under one store lock. |
-| 4 | `BookingService.sequence` / `nextId()` | Safe: `AtomicLong.incrementAndGet()` gives concurrent requests distinct ids. |
-| 5 | `BookingService.catalog` | Safe: construction copies it, and later operations only read it. |
-| 6 | `BookingStats` counters | Racy by design, but irrelevant: approximate counters make no booking decision and cannot create store rows. |
-| 7 | `BookingLog` / standard output | Concurrent lines may be ordered unpredictably, but each completed `println` neither decides nor stores bookings. |
+| 1 | `BookingService.book`: `hasOverlap` then `insert` | **Cause:** another booking can run between the check and insert. |
+| 2 | `InMemoryBookingStore.bookings` | Safe per method: every store method uses the same lock. |
+| 3 | `cancelAndPromote` | Safe: cancellation and promotion use one store lock. |
+| 4 | `sequence` / `nextId()` | Safe: `AtomicLong` gives each request a different id. |
+| 5 | `catalog` | Safe: it is copied once and only read afterward. |
+| 6 | `BookingStats` | Racy by design, but the approximate counts do not affect bookings. |
+| 7 | `BookingLog` | Log order may vary, but logging does not affect bookings. |
 
 **Which one explains the ticket, and how you know.** Tie it to the invariant
 the ticket names.
 
-`BookingService.book` explains the ticket. The named invariant is at most one
-`CONFIRMED` booking per room per minute, but `hasOverlap` and `insert` are two
-separate critical sections. Two callers can both observe no confirmed overlap
-and then both insert a confirmed booking. That produces exactly the durable
-bad state and paired confirmation log lines in the ticket; approximate stats,
-id generation, and logging cannot do that.
+`BookingService.book` explains the ticket. Two callers can both see no overlap
+before either inserts. Both then insert a `CONFIRMED` booking, breaking the
+rule that a room can have at most one confirmed booking for any minute.
 
 ### Predicted interleaving (write this before you run your race test)
 
@@ -44,12 +41,11 @@ as your prediction needs.
 
 | Step | Thread A | Thread B |
 |---|---|---|
-| t1 | `hasOverlap(WEH-5409, 540, 600)` returns false, then pauses before `book` receives the result. | |
-| t2 | | `hasOverlap(WEH-5409, 540, 600)` returns false. |
-| t3 | | Creates `bk-1` as `CONFIRMED`, inserts it, and logs `booking.confirmed`. |
-| t4 | Resumes with its already-computed false result. | |
-| t5 | Creates `bk-2` as `CONFIRMED`, inserts it, and logs `booking.confirmed`. | |
-| | **End state:** | Two overlapping `CONFIRMED` bookings for the same room and minutes; the invariant assertion expects one and fails with actual count two. |
+| t1 | `hasOverlap` returns false, then pauses. | |
+| t2 | | `hasOverlap` returns false. |
+| t3 | | Inserts confirmed `bk-1`. |
+| t4 | Resumes and inserts confirmed `bk-2`. | |
+| | **End state:** | Two confirmed bookings hold the same room and time. |
 
 If the run turned out different from your prediction, add one line on what
 you missed. Leave the table as you first wrote it.
@@ -60,20 +56,16 @@ you missed. Leave the table as you first wrote it.
 that pair pins the schedule you predicted, and the output of two separate
 runs (assertion failure and log lines).
 
-I aimed `PausingStore` at `hasOverlap`, call 1. The wrapper delegates first, so
-Thread A computes `false` against the empty store and then parks before
-`BookingService.book` receives that answer. Thread B is not gated: it checks
-the still-empty store, inserts, and finishes. Releasing A then lets it act on
-its already-computed `false` and insert too. The run matched the prediction.
+I aimed `PausingStore` at `hasOverlap`, call 1. Thread A gets `false` and
+pauses, so Thread B can also get `false` and insert. Releasing A lets it insert
+the second confirmed booking. Both runs matched the prediction.
 
 Run 1:
 
 ```text
 2026-11-05T23:18:58.786Z INFO booking.confirmed booking=bk-1 room=WEH-5409 start=540 end=600
 2026-11-05T23:18:58.794Z INFO booking.confirmed booking=bk-2 room=WEH-5409 start=540 end=600
-[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0
 [ERROR] RaceTest.concurrentRequestsCannotBothConfirmTheSameSlot:51 a room may have at most one confirmed booking covering any minute ==> expected: <1> but was: <2>
-[INFO] BUILD FAILURE
 ```
 
 Run 2:
@@ -81,9 +73,7 @@ Run 2:
 ```text
 2026-11-05T23:19:07.686Z INFO booking.confirmed booking=bk-1 room=WEH-5409 start=540 end=600
 2026-11-05T23:19:07.687Z INFO booking.confirmed booking=bk-2 room=WEH-5409 start=540 end=600
-[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0
 [ERROR] RaceTest.concurrentRequestsCannotBothConfirmTheSameSlot:51 a room may have at most one confirmed booking covering any minute ==> expected: <1> but was: <2>
-[INFO] BUILD FAILURE
 ```
 
 ---
