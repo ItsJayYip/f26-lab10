@@ -82,11 +82,34 @@ Run 2:
 
 **Your milestone-1 test on the patched code.** Green or red. Paste the result.
 
+Green. The added second check sees the other booking in this schedule.
+
+```text
+2026-11-05T23:22:29.625Z INFO booking.confirmed booking=bk-1 room=WEH-5409 start=540 end=600
+2026-11-05T23:22:29.629Z INFO booking.rejected room=WEH-5409 start=540 end=600 reason=slot already held
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+```
+
 **The re-aimed run.** Method name, call index, the pasted result, and one line
 on why that aim tests the patch rather than sidestepping it.
 
+I re-aimed `PausingStore` at `hasOverlap`, call 2: the new check added by the
+patch. It pauses after that check returns false but before `insert`.
+
+```text
+2026-11-05T23:24:11.757Z INFO booking.confirmed booking=bk-2 room=WEH-5409 start=540 end=600
+2026-11-05T23:24:11.759Z INFO booking.confirmed booking=bk-1 room=WEH-5409 start=540 end=600
+[ERROR] RaceTest.secondOverlapCheckStillAllowsDoubleBooking:76 expected: <1> but was: <2>
+[INFO] BUILD FAILURE
+```
+
 **Your verdict.** Accept or reject, and what your milestone-1 result does and
 does not show about the patch.
+
+Reject. The green milestone-1 test shows the patch handles that one schedule;
+it does not prove the race is gone. The re-aimed test shows another request can
+still run between the new check and `insert`, so the patch only moves the race.
 
 ---
 
