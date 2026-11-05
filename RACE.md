@@ -119,8 +119,8 @@ still run between the new check and `insert`, so the patch only moves the race.
 and the two operations it now covers. Paste the diff of your change and the
 passing run of your milestone-1 test and the full suite.
 
-I chose option 1 and made `BookingService.book` synchronized. The service lock
-now covers both `hasOverlap` and `insert`.
+I chose option 1 and added `synchronized` to `BookingService.book`. Now one
+booking request finishes checking and saving before the next one starts.
 
 ```diff
 -    public BookingResult book(String roomId, int startMinute, int endMinute) {
@@ -147,22 +147,21 @@ Full suite:
 what that test now exercises. Did `PausingStore` pause a call during the green run? How do
 you know?
 
-Yes. It still pauses the first `hasOverlap` call; the passing `awaitPaused`
-assertion proves the gate fired. The second caller waits for the service lock,
-then sees the first booking and rejects it.
+Yes. The test still pauses the first overlap check. We know it paused because
+`awaitPaused` passed. The second request waits, sees the saved booking, and is
+rejected.
 
 **What runs one at a time now that ran in parallel before.** Name concretely which callers
 queue behind which. "Nothing, it is just correct now" does not count as an
 answer.
 
-Calls to `book` on the same service now run one at a time. A web request waits
-for an in-progress kiosk request, and vice versa.
+Booking requests now run one at a time. A web request waits for a kiosk request
+that is already booking, and vice versa.
 
-Cost: bookings for different rooms also wait for each other.
+Cost: requests for different rooms also have to wait.
 
 **What you left unfixed.** For anything your review flagged that you chose not
 to fix, one line each on why.
 
-- `BookingStats` remains racy because its counts are intentionally approximate
-  and do not affect booking decisions.
-- Log order remains nondeterministic because it does not affect stored bookings.
+- `BookingStats` stays approximate because it does not affect bookings.
+- Log order may still vary because it does not affect saved bookings.
