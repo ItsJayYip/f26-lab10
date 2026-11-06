@@ -75,4 +75,4 @@ depends on them. Count the bookings in the store when you need an exact number.
 See the Lab 10 handout on the course page for the three milestones you show a
 TA.
 
-Tool used: OpenAI Codex (GPT-5).
+Tool used: OpenAI Codex (GPT-5.6 Sol).
